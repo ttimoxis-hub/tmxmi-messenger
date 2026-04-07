@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>TMXMI — Мессенджер с паролем и звонками</title>
+    <title>TMXMI — Мессенджер</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -326,12 +326,11 @@
             projectId: "tmxmi-msg",
             storageBucket: "tmxmi-msg.firebasestorage.app",
             messagingSenderId: "81160522438",
-            appId: "1:81160522438:web:c2011fc51d3a3851c365c7",
-            measurementId: "G-4LW2S3Z0KT"
+            appId: "1:81160522438:web:c2011fc51d3a3851c365c7"
         };
         
         import { initializeApp } from "firebase/app";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+        import { getAuth, signInAnonymously } from "firebase/auth";
         import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, query, orderBy, getDocs, updateDoc, arrayUnion, deleteDoc, where, getDoc } from "firebase/firestore";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
         
@@ -349,7 +348,10 @@
         let peerConnection = null;
         let currentCallPanel = null;
         let currentCallWith = null;
+        let incomingCallOverlay = null;
         const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+        
+        let mediaRecorder = null, audioChunks = [], isRecording = false, recordStart = null, recordInterval = null, recordingStream = null;
         
         function showToast(msg) {
             const toast = document.createElement('div');
@@ -359,6 +361,34 @@
             setTimeout(() => toast.remove(), 2100);
         }
         function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
+        
+        async function getDeviceFingerprint() {
+            const userAgent = navigator.userAgent;
+            const language = navigator.language;
+            const screenRes = `${screen.width}x${screen.height}`;
+            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            let ip = 'unknown';
+            try {
+                const res = await fetch('https://api.ipify.org?format=json');
+                const data = await res.json();
+                ip = data.ip;
+            } catch(e) {}
+            return `${ip}|${userAgent}|${language}|${screenRes}|${timezone}`;
+        }
+        
+        async function saveSession(userId) {
+            const fingerprint = await getDeviceFingerprint();
+            localStorage.setItem('tmxmi_session', JSON.stringify({ userId, fingerprint, timestamp: Date.now() }));
+        }
+        
+        async function checkSession() {
+            const saved = localStorage.getItem('tmxmi_session');
+            if (!saved) return null;
+            const session = JSON.parse(saved);
+            const currentFingerprint = await getDeviceFingerprint();
+            if (session.fingerprint === currentFingerprint) return session.userId;
+            return null;
+        }
         
         async function registerUser(username, password, avatarLetter) {
             const q = query(collection(db, "users"), where("username", "==", username));
@@ -374,7 +404,7 @@
                 friends: []
             });
             currentUser = { userId: firebaseUid, username, avatarLetter: avatarLetter || username[0].toUpperCase() };
-            localStorage.setItem('tmxmi_user', JSON.stringify({ userId: firebaseUid, username, avatarLetter: currentUser.avatarLetter }));
+            await saveSession(firebaseUid);
             return currentUser;
         }
         
@@ -386,63 +416,21 @@
             const firebaseUid = userData.userId;
             await signInAnonymously(auth);
             currentUser = { userId: firebaseUid, username: userData.username, avatarLetter: userData.avatarLetter };
-            localStorage.setItem('tmxmi_user', JSON.stringify({ userId: firebaseUid, username: userData.username, avatarLetter: userData.avatarLetter }));
+            await saveSession(firebaseUid);
             return currentUser;
         }
         
-        async function loadUserFromStorage() {
-            const saved = localStorage.getItem('tmxmi_user');
-            if (saved) {
-                const data = JSON.parse(saved);
-                currentUser = data;
-                const userDoc = await getDoc(doc(db, "users", currentUser.userId));
-                if (userDoc.exists()) return true;
+        async function loadUserFromSession() {
+            const userId = await checkSession();
+            if (userId) {
+                const userDoc = await getDoc(doc(db, "users", userId));
+                if (userDoc.exists()) {
+                    const data = userDoc.data();
+                    currentUser = { userId: data.userId, username: data.username, avatarLetter: data.avatarLetter };
+                    return true;
+                }
             }
             return false;
-        }
-        
-        function showAuth() {
-            let isLogin = true;
-            const modal = document.createElement('div');
-            modal.className = 'auth-modal';
-            const render = () => {
-                modal.innerHTML = `
-                    <div class="auth-card">
-                        <h2>${isLogin ? 'Вход' : 'Регистрация'}</h2>
-                        <input type="text" class="auth-input" id="authUsername" placeholder="Имя пользователя">
-                        <input type="password" class="auth-input" id="authPassword" placeholder="Пароль">
-                        ${!isLogin ? '<input type="text" class="auth-input" id="authAvatar" maxlength="1" placeholder="Буква аватара (необязательно)">' : ''}
-                        <button class="auth-btn" id="authSubmitBtn">${isLogin ? 'Войти' : 'Зарегистрироваться'}</button>
-                        <div class="auth-switch">${isLogin ? 'Нет аккаунта?' : 'Уже есть аккаунт?'} <span id="switchAuthMode">${isLogin ? 'Зарегистрироваться' : 'Войти'}</span></div>
-                    </div>
-                `;
-                const submitBtn = document.getElementById('authSubmitBtn');
-                if (submitBtn) {
-                    submitBtn.onclick = async () => {
-                        const username = document.getElementById('authUsername').value.trim();
-                        const password = document.getElementById('authPassword').value.trim();
-                        if (!username || !password) { alert('Заполните все поля'); return; }
-                        try {
-                            if (isLogin) {
-                                await loginUser(username, password);
-                            } else {
-                                const avatar = document.getElementById('authAvatar')?.value.trim().toUpperCase() || '';
-                                await registerUser(username, password, avatar);
-                            }
-                            modal.remove();
-                            await loadContacts();
-                            renderMainApp();
-                            listenForCalls();
-                        } catch(e) { alert(e.message); }
-                    };
-                }
-                const switchBtn = document.getElementById('switchAuthMode');
-                if (switchBtn) {
-                    switchBtn.onclick = () => { isLogin = !isLogin; render(); };
-                }
-            };
-            render();
-            document.body.appendChild(modal);
         }
         
         async function fetchAllUsers() {
@@ -550,7 +538,8 @@
                 el.addEventListener('click', () => {
                     activeChat = el.getAttribute('data-id');
                     const contact = contacts.find(c => c.id === activeChat);
-                    document.getElementById('chatTitle').innerText = contact ? contact.name : 'Чат';
+                    const titleEl = document.getElementById('chatTitle');
+                    if (titleEl) titleEl.innerText = contact ? contact.name : 'Чат';
                     subscribeToMessages(activeChat);
                 });
             });
@@ -574,7 +563,6 @@
             });
         }
         
-        let mediaRecorder = null, audioChunks = [], isRecording = false, recordStart = null, recordInterval = null, recordingStream = null;
         async function startVoiceRecording() {
             if (isRecording) return;
             if (!activeChat) { showToast('Выберите чат'); return; }
@@ -613,6 +601,7 @@
                 }, 200);
             } catch(e) { showToast('Микрофон недоступен'); }
         }
+        
         function stopVoiceRecording() {
             if (!isRecording || !mediaRecorder) return;
             mediaRecorder.stop();
@@ -629,7 +618,6 @@
             if (recordingStream) recordingStream.getTracks().forEach(t => t.stop());
         }
         
-        let incomingCallOverlay = null;
         async function startCall(isVideo) {
             if (!activeChat) { showToast('Выберите собеседника'); return; }
             const target = contacts.find(c => c.id === activeChat);
@@ -645,9 +633,7 @@
                     if (videoEl && event.streams[0]) videoEl.srcObject = event.streams[0];
                 };
                 peerConnection.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        sendCallSignal(target.id, { type: 'candidate', candidate: event.candidate });
-                    }
+                    if (event.candidate) sendCallSignal(target.id, { type: 'candidate', candidate: event.candidate });
                 };
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
@@ -655,9 +641,7 @@
                 currentCallWith = target.id;
                 createCallPanel(isVideo);
                 showToast(`Звоним ${target.name}...`);
-            } catch (err) {
-                showToast('Ошибка доступа к медиа: ' + err.message);
-            }
+            } catch (err) { showToast('Ошибка доступа к медиа: ' + err.message); }
         }
         
         function sendCallSignal(toUserId, data) {
@@ -679,23 +663,11 @@
                         const fromUser = (await getDoc(doc(db, "users", fromId))).data();
                         const overlay = document.createElement('div');
                         overlay.className = 'call-overlay';
-                        overlay.innerHTML = `
-                            <div class="call-modal">
-                                <h3>Входящий звонок</h3>
-                                <p>${fromUser ? escapeHtml(fromUser.username) : 'Пользователь'}</p>
-                                <div class="call-modal-buttons">
-                                    <button class="accept-btn">Принять</button>
-                                    <button class="reject-btn">Отклонить</button>
-                                </div>
-                            </div>
-                        `;
+                        overlay.innerHTML = `<div class="call-modal"><h3>Входящий звонок</h3><p>${fromUser ? escapeHtml(fromUser.username) : 'Пользователь'}</p><div class="call-modal-buttons"><button class="accept-btn">Принять</button><button class="reject-btn">Отклонить</button></div></div>`;
                         document.body.appendChild(overlay);
                         incomingCallOverlay = overlay;
-                        const acceptBtn = overlay.querySelector('.accept-btn');
-                        const rejectBtn = overlay.querySelector('.reject-btn');
-                        acceptBtn.onclick = async () => {
-                            overlay.remove();
-                            incomingCallOverlay = null;
+                        overlay.querySelector('.accept-btn').onclick = async () => {
+                            overlay.remove(); incomingCallOverlay = null;
                             try {
                                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: signal.video });
                                 peerConnection = new RTCPeerConnection(configuration);
@@ -715,14 +687,11 @@
                                 currentCallWith = fromId;
                                 createCallPanel(signal.video);
                                 showToast(`Соединение установлено`);
-                            } catch (err) {
-                                showToast('Ошибка: ' + err.message);
-                            }
+                            } catch (err) { showToast('Ошибка: ' + err.message); }
                             await deleteDoc(docSnap.ref);
                         };
-                        rejectBtn.onclick = async () => {
-                            overlay.remove();
-                            incomingCallOverlay = null;
+                        overlay.querySelector('.reject-btn').onclick = async () => {
+                            overlay.remove(); incomingCallOverlay = null;
                             sendCallSignal(fromId, { type: 'reject' });
                             await deleteDoc(docSnap.ref);
                         };
@@ -746,15 +715,7 @@
             if (currentCallPanel) currentCallPanel.remove();
             currentCallPanel = document.createElement('div');
             currentCallPanel.className = 'call-panel';
-            currentCallPanel.innerHTML = `
-                <video id="remoteVideo" autoplay playsinline></video>
-                ${isVideo ? '<video id="localVideo" autoplay playsinline muted style="width:100%; border-radius:20px; margin-top:8px;"></video>' : ''}
-                <div class="call-controls">
-                    <button id="endCallBtn">Завершить</button>
-                    <button id="muteAudioBtn">Выкл. звук</button>
-                    ${isVideo ? '<button id="toggleVideoBtn">Выкл. видео</button>' : ''}
-                </div>
-            `;
+            currentCallPanel.innerHTML = `<video id="remoteVideo" autoplay playsinline></video>${isVideo ? '<video id="localVideo" autoplay playsinline muted style="width:100%; border-radius:20px; margin-top:8px;"></video>' : ''}<div class="call-controls"><button id="endCallBtn">Завершить</button><button id="muteAudioBtn">Выкл. звук</button>${isVideo ? '<button id="toggleVideoBtn">Выкл. видео</button>' : ''}</div>`;
             document.body.appendChild(currentCallPanel);
             if (isVideo && localStream) {
                 const localVideo = currentCallPanel.querySelector('#localVideo');
@@ -842,8 +803,36 @@
             if (recordBtn) recordBtn.onclick = () => { if (isRecording) stopVoiceRecording(); else startVoiceRecording(); };
         }
         
+        function showAuth() {
+            let isLogin = true;
+            const modal = document.createElement('div');
+            modal.className = 'auth-modal';
+            function render() {
+                modal.innerHTML = `<div class="auth-card"><h2>${isLogin ? 'Вход' : 'Регистрация'}</h2><input type="text" class="auth-input" id="authUsername" placeholder="Имя пользователя"><input type="password" class="auth-input" id="authPassword" placeholder="Пароль">${!isLogin ? '<input type="text" class="auth-input" id="authAvatar" maxlength="1" placeholder="Буква аватара (необязательно)">' : ''}<button class="auth-btn" id="authSubmitBtn">${isLogin ? 'Войти' : 'Зарегистрироваться'}</button><div class="auth-switch" id="switchAuthMode">${isLogin ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти'}</div></div>`;
+                document.getElementById('authSubmitBtn').onclick = async () => {
+                    const username = document.getElementById('authUsername').value.trim();
+                    const password = document.getElementById('authPassword').value.trim();
+                    if (!username || !password) { alert('Заполните все поля'); return; }
+                    try {
+                        if (isLogin) await loginUser(username, password);
+                        else {
+                            const avatar = document.getElementById('authAvatar')?.value.trim().toUpperCase() || '';
+                            await registerUser(username, password, avatar);
+                        }
+                        modal.remove();
+                        await loadContacts();
+                        renderMainApp();
+                        listenForCalls();
+                    } catch(e) { alert(e.message); }
+                };
+                document.getElementById('switchAuthMode').onclick = () => { isLogin = !isLogin; render(); };
+            }
+            render();
+            document.body.appendChild(modal);
+        }
+        
         document.addEventListener('DOMContentLoaded', async () => {
-            const hasUser = await loadUserFromStorage();
+            const hasUser = await loadUserFromSession();
             if (hasUser) {
                 await loadContacts();
                 renderMainApp();
