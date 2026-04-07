@@ -13,7 +13,6 @@
             background: #050b10;
             position: relative;
         }
-        /* Улучшенный анимированный фон */
         .fluid-bg {
             position: fixed;
             top: -50%;
@@ -52,7 +51,6 @@
             background: rgba(3, 10, 18, 0.4);
             backdrop-filter: blur(4px);
         }
-        /* Стили интерфейса */
         .sidebar {
             width: 320px;
             background: rgba(10, 20, 30, 0.7);
@@ -203,7 +201,6 @@
         .wave-stroke:nth-child(3) { height: 28px; animation-delay: 0.3s; }
         .wave-stroke:nth-child(4) { height: 16px; animation-delay: 0.45s; }
         @keyframes waveHeight { 0% { transform: scaleY(0.4); opacity: 0.5; } 100% { transform: scaleY(1); opacity: 1; } }
-        /* Call panel и overlay */
         .call-overlay {
             position: fixed;
             top: 0;
@@ -281,7 +278,6 @@
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #0bc5c5; border-radius: 10px; }
-        /* Модалки регистрации и входа */
         .auth-modal {
             position: fixed;
             top: 0;
@@ -324,7 +320,6 @@
         }
     </script>
     <script type="module">
-        // Firebase конфигурация (ваша)
         const firebaseConfig = {
             apiKey: "AIzaSyAvPTV3RVv3CDWNuC9bs27cuUVy_YZP8ug",
             authDomain: "tmxmi-msg.firebaseapp.com",
@@ -334,6 +329,7 @@
             appId: "1:81160522438:web:c2011fc51d3a3851c365c7",
             measurementId: "G-4LW2S3Z0KT"
         };
+        
         import { initializeApp } from "firebase/app";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
         import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, query, orderBy, getDocs, updateDoc, arrayUnion, deleteDoc, where, getDoc } from "firebase/firestore";
@@ -344,12 +340,11 @@
         const db = getFirestore(app);
         const storage = getStorage(app);
         
-        let currentUser = null;      // { userId, username, avatarLetter }
+        let currentUser = null;
         let contacts = [];
         let activeChat = null;
-        let appRoot = document.getElementById('appRoot');
+        let appRoot = null;
         
-        // WebRTC переменные
         let localStream = null;
         let peerConnection = null;
         let currentCallPanel = null;
@@ -365,20 +360,16 @@
         }
         function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
         
-        // ---------- АУТЕНТИФИКАЦИЯ (имя пользователя + пароль) ----------
         async function registerUser(username, password, avatarLetter) {
-            // Проверяем, не занят ли username
             const q = query(collection(db, "users"), where("username", "==", username));
             const snap = await getDocs(q);
             if (!snap.empty) throw new Error("Имя пользователя уже занято");
-            // Создаём анонимную учётку Firebase
             const userCred = await signInAnonymously(auth);
             const firebaseUid = userCred.user.uid;
-            // Сохраняем данные пользователя в Firestore
             await setDoc(doc(db, "users", firebaseUid), {
                 userId: firebaseUid,
                 username: username,
-                password: password, // в реальном проекте хешировать!
+                password: password,
                 avatarLetter: avatarLetter || username[0].toUpperCase(),
                 friends: []
             });
@@ -393,9 +384,7 @@
             if (snap.empty) throw new Error("Неверное имя пользователя или пароль");
             const userData = snap.docs[0].data();
             const firebaseUid = userData.userId;
-            // Входим анонимно с этим UID (нужно сохранить сессию)
             await signInAnonymously(auth);
-            // Принудительно устанавливаем currentUser
             currentUser = { userId: firebaseUid, username: userData.username, avatarLetter: userData.avatarLetter };
             localStorage.setItem('tmxmi_user', JSON.stringify({ userId: firebaseUid, username: userData.username, avatarLetter: userData.avatarLetter }));
             return currentUser;
@@ -406,11 +395,8 @@
             if (saved) {
                 const data = JSON.parse(saved);
                 currentUser = data;
-                // Проверяем существование пользователя в Firestore
                 const userDoc = await getDoc(doc(db, "users", currentUser.userId));
-                if (userDoc.exists()) {
-                    return true;
-                }
+                if (userDoc.exists()) return true;
             }
             return false;
         }
@@ -430,30 +416,35 @@
                         <div class="auth-switch">${isLogin ? 'Нет аккаунта?' : 'Уже есть аккаунт?'} <span id="switchAuthMode">${isLogin ? 'Зарегистрироваться' : 'Войти'}</span></div>
                     </div>
                 `;
-                document.getElementById('authSubmitBtn').onclick = async () => {
-                    const username = document.getElementById('authUsername').value.trim();
-                    const password = document.getElementById('authPassword').value.trim();
-                    if (!username || !password) { alert('Заполните все поля'); return; }
-                    try {
-                        if (isLogin) {
-                            await loginUser(username, password);
-                        } else {
-                            const avatar = document.getElementById('authAvatar')?.value.trim().toUpperCase() || '';
-                            await registerUser(username, password, avatar);
-                        }
-                        modal.remove();
-                        await loadContacts();
-                        renderMainApp();
-                        listenForCalls();
-                    } catch(e) { alert(e.message); }
-                };
-                document.getElementById('switchAuthMode').onclick = () => { isLogin = !isLogin; render(); };
+                const submitBtn = document.getElementById('authSubmitBtn');
+                if (submitBtn) {
+                    submitBtn.onclick = async () => {
+                        const username = document.getElementById('authUsername').value.trim();
+                        const password = document.getElementById('authPassword').value.trim();
+                        if (!username || !password) { alert('Заполните все поля'); return; }
+                        try {
+                            if (isLogin) {
+                                await loginUser(username, password);
+                            } else {
+                                const avatar = document.getElementById('authAvatar')?.value.trim().toUpperCase() || '';
+                                await registerUser(username, password, avatar);
+                            }
+                            modal.remove();
+                            await loadContacts();
+                            renderMainApp();
+                            listenForCalls();
+                        } catch(e) { alert(e.message); }
+                    };
+                }
+                const switchBtn = document.getElementById('switchAuthMode');
+                if (switchBtn) {
+                    switchBtn.onclick = () => { isLogin = !isLogin; render(); };
+                }
             };
             render();
             document.body.appendChild(modal);
         }
         
-        // ---------- FIRESTORE ОПЕРАЦИИ ----------
         async function fetchAllUsers() {
             const snapshot = await getDocs(collection(db, "users"));
             const users = [];
@@ -514,7 +505,6 @@
                 row.appendChild(bubble);
                 container.appendChild(row);
             });
-            // Обработчики
             document.querySelectorAll('.play-svg').forEach(btn => {
                 btn.onclick = () => {
                     const url = btn.getAttribute('data-url');
@@ -584,7 +574,6 @@
             });
         }
         
-        // ---------- ГОЛОСОВЫЕ СООБЩЕНИЯ ----------
         let mediaRecorder = null, audioChunks = [], isRecording = false, recordStart = null, recordInterval = null, recordingStream = null;
         async function startVoiceRecording() {
             if (isRecording) return;
@@ -640,9 +629,7 @@
             if (recordingStream) recordingStream.getTracks().forEach(t => t.stop());
         }
         
-        // ---------- REAL WEBRTC CALLS С ОВЕРЛЕЕМ ----------
         let incomingCallOverlay = null;
-        
         async function startCall(isVideo) {
             if (!activeChat) { showToast('Выберите собеседника'); return; }
             const target = contacts.find(c => c.id === activeChat);
@@ -688,7 +675,6 @@
                     const signal = callData.data;
                     const fromId = callData.from;
                     if (signal.type === 'offer') {
-                        // Показываем затемнённое окно с выбором
                         if (incomingCallOverlay) incomingCallOverlay.remove();
                         const fromUser = (await getDoc(doc(db, "users", fromId))).data();
                         const overlay = document.createElement('div');
@@ -804,8 +790,9 @@
             showToast('Звонок завершён');
         }
         
-        // ---------- ОСНОВНОЙ ИНТЕРФЕЙС ----------
         function renderMainApp() {
+            appRoot = document.getElementById('appRoot');
+            if (!appRoot) return;
             appRoot.innerHTML = `<div class="app"><div class="sidebar"><div class="sidebar-header"><div class="user-card" id="profileBtn"><div class="avatar-icon"><svg viewBox="0 0 24 24" stroke="white" fill="none"><text x="12" y="17" font-size="12" text-anchor="middle" fill="white">${currentUser.avatarLetter}</text></svg></div><div class="user-text"><h4>${escapeHtml(currentUser.username)}</h4><p>онлайн</p></div></div></div><div class="search-section"><div class="search-wrapper"><input type="text" class="search-input" id="searchPeopleInput" placeholder="Поиск людей..."><div class="search-btn" id="searchBtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke="currentColor" fill="none"/><line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor"/></svg></div></div><div class="search-results" id="searchResults"></div></div><div class="nav-menu"><div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" fill="none"/></svg><span>Чаты</span></div><div class="nav-item"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" fill="none"/><circle cx="9" cy="7" r="4" stroke="currentColor" fill="none"/><path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" fill="none"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" fill="none"/></svg><span>Друзья <span id="friendsCount">${contacts.length}</span></span></div></div><div id="contactsList"></div></div><div class="chat-area"><div class="chat-header"><div class="chat-title"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" fill="none"/></svg><h2 id="chatTitle">Выберите чат</h2></div><div class="call-buttons"><div class="call-btn" id="audioCallBtn"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor" fill="none"/><line x1="12" y1="18" x2="12" y2="18" stroke="currentColor" stroke-width="2"/></svg>Аудио</div><div class="call-btn" id="videoCallBtn"><svg viewBox="0 0 24 24"><path d="M23 7l-5 5 5 5V7z" stroke="currentColor" fill="none"/><rect x="1" y="5" width="15" height="14" rx="2" stroke="currentColor" fill="none"/></svg>Видео</div></div></div><div class="messages-container" id="messagesList"></div><div class="input-panel"><div class="file-attach-icon" id="fileAttachBtn"><svg viewBox="0 0 24 24"><path d="M13.5 3H12a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a1 1 0 0 0-1-1 1 1 0 0 0-1 1v10" stroke="currentColor" fill="none"/></svg></div><input type="file" id="hiddenFileInput" style="display:none;"><div class="text-input-wrapper"><input type="text" id="messageInput" placeholder="Написать сообщение..."><div class="send-icon" id="sendMsgBtn"><svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13" stroke="currentColor"/><polygon points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" fill="none"/></svg></div></div><div class="circle-record" id="recordCircleBtn"><div class="wave-animation" id="waveGroup" style="display: none;"><div class="wave-stroke"></div><div class="wave-stroke"></div><div class="wave-stroke"></div><div class="wave-stroke"></div></div><div id="micNormalIcon"><svg width="24" height="24" viewBox="0 0 24 24" stroke="white" fill="none"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div></div><span id="recordTimer" style="color:#88ccff; font-size:13px;"></span></div></div></div>`;
             renderSidebarFriends();
             attachEvents();
@@ -813,14 +800,24 @@
         }
         
         function attachEvents() {
-            document.getElementById('sendMsgBtn')?.addEventListener('click', async () => {
-                const input = document.getElementById('messageInput');
-                if (input.value.trim() && activeChat) { await sendMessage(activeChat, 'text', { content: input.value.trim() }); input.value = ''; }
+            const sendBtn = document.getElementById('sendMsgBtn');
+            const msgInput = document.getElementById('messageInput');
+            const fileAttach = document.getElementById('fileAttachBtn');
+            const hiddenFile = document.getElementById('hiddenFileInput');
+            const audioCall = document.getElementById('audioCallBtn');
+            const videoCall = document.getElementById('videoCallBtn');
+            const profileBtn = document.getElementById('profileBtn');
+            const searchBtn = document.getElementById('searchBtn');
+            const searchInput = document.getElementById('searchPeopleInput');
+            const recordBtn = document.getElementById('recordCircleBtn');
+            
+            if (sendBtn) sendBtn.onclick = async () => {
+                if (msgInput.value.trim() && activeChat) { await sendMessage(activeChat, 'text', { content: msgInput.value.trim() }); msgInput.value = ''; }
                 else if (!activeChat) showToast('Выберите чат');
-            });
-            document.getElementById('messageInput')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('sendMsgBtn').click(); });
-            document.getElementById('fileAttachBtn')?.addEventListener('click', () => document.getElementById('hiddenFileInput').click());
-            document.getElementById('hiddenFileInput')?.addEventListener('change', async (e) => {
+            };
+            if (msgInput) msgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn?.click(); });
+            if (fileAttach) fileAttach.onclick = () => hiddenFile?.click();
+            if (hiddenFile) hiddenFile.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
                 if (file.size > 5*1024*1024*1024) { showToast('Файл превышает 5 ГБ'); return; }
@@ -835,18 +832,17 @@
                     await sendMessage(activeChat, 'file', { fileName: file.name, fileSize: file.size, fileDataUrl: fileUrl });
                 };
                 reader.readAsArrayBuffer(file);
-                document.getElementById('hiddenFileInput').value = '';
-            });
-            document.getElementById('audioCallBtn')?.addEventListener('click', () => startCall(false));
-            document.getElementById('videoCallBtn')?.addEventListener('click', () => startCall(true));
-            document.getElementById('profileBtn')?.addEventListener('click', () => showToast(`Профиль: ${currentUser.username}`));
-            document.getElementById('searchBtn')?.addEventListener('click', searchPeople);
-            document.getElementById('searchPeopleInput')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') searchPeople(); });
-            document.getElementById('recordCircleBtn')?.addEventListener('click', () => { if (isRecording) stopVoiceRecording(); else startVoiceRecording(); });
+                hiddenFile.value = '';
+            };
+            if (audioCall) audioCall.onclick = () => startCall(false);
+            if (videoCall) videoCall.onclick = () => startCall(true);
+            if (profileBtn) profileBtn.onclick = () => showToast(`Профиль: ${currentUser.username}`);
+            if (searchBtn) searchBtn.onclick = searchPeople;
+            if (searchInput) searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') searchPeople(); });
+            if (recordBtn) recordBtn.onclick = () => { if (isRecording) stopVoiceRecording(); else startVoiceRecording(); };
         }
         
-        // Запуск
-        (async () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const hasUser = await loadUserFromStorage();
             if (hasUser) {
                 await loadContacts();
@@ -855,7 +851,7 @@
             } else {
                 showAuth();
             }
-        })();
+        });
     </script>
 </head>
 <body>
