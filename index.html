@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>TMXMI — Мессенджер с паролем и звонками</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: #050b10;
+            position: relative;
+        }
+        /* Улучшенный анимированный фон */
+        .fluid-bg {
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(ellipse at 40% 50%, rgba(0, 210, 230, 0.6), rgba(0, 120, 180, 0.7), rgba(0, 50, 100, 0.9));
+            animation: fluidMove 10s infinite alternate ease-in-out;
+            z-index: 0;
+        }
+        @keyframes fluidMove {
+            0% { transform: translate(0%,0%) rotate(0deg); filter: hue-rotate(0deg) brightness(1);}
+            100% { transform: translate(5%,-3%) rotate(2deg); filter: hue-rotate(20deg) brightness(1.15);}
+        }
+        .particles {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            background-image: radial-gradient(circle at 30% 40%, rgba(0, 230, 250, 0.5) 2px, transparent 2px);
+            background-size: 45px 45px;
+            animation: particlesFloat 15s linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+        @keyframes particlesFloat {
+            0% { background-position: 0 0; }
+            100% { background-position: 80px 80px; }
+        }
+        .app {
+            position: relative;
+            z-index: 2;
+            height: 100vh;
+            display: flex;
+            padding: 16px;
+            gap: 16px;
+            background: rgba(3, 10, 18, 0.4);
+            backdrop-filter: blur(4px);
+        }
+        /* Стили интерфейса */
+        .sidebar {
+            width: 320px;
+            background: rgba(10, 20, 30, 0.7);
+            backdrop-filter: blur(20px);
+            border-radius: 32px;
+            border: 1px solid rgba(0, 200, 210, 0.25);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .sidebar-header { padding: 24px 20px; border-bottom: 1px solid rgba(0,200,210,0.2); }
+        .user-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 24px;
+            transition: 0.3s;
+            background: rgba(11,197,197,0.05);
+        }
+        .user-card:hover { background: rgba(11,197,197,0.2); transform: translateX(5px); }
+        .avatar-icon {
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(135deg,#0bc5c5,#0066cc);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.3s;
+            box-shadow: 0 0 12px rgba(0,200,210,0.4);
+            border-radius: 28px;
+        }
+        .avatar-icon svg { width: 30px; height: 30px; stroke: white; stroke-width: 1.5; fill: none; }
+        .user-text h4 { color: white; font-size: 17px; font-weight: 600; }
+        .user-text p { color: #7fbfdf; font-size: 12px; margin-top: 4px; }
+        .search-section { padding: 16px 20px; border-bottom: 1px solid rgba(0,200,210,0.2); }
+        .search-wrapper {
+            display: flex;
+            gap: 10px;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(0,200,210,0.3);
+            border-radius: 60px;
+            transition: 0.3s;
+        }
+        .search-wrapper:focus-within { border-color: #0bc5c5; box-shadow: 0 0 16px rgba(11,197,197,0.4); transform: translateY(-1px); }
+        .search-input { flex:1; background:transparent; border:none; padding:12px 18px; color:white; outline:none; font-size:14px; border-radius:60px; }
+        .search-btn { padding:0 16px; background:rgba(11,197,197,0.2); cursor:pointer; display:flex; align-items:center; border-radius:60px; transition:0.3s; }
+        .search-btn svg { width:18px; height:18px; stroke:#0bc5c5; }
+        .search-btn:hover { background:#0bc5c5; transform:scale(0.95); }
+        .search-results { margin-top:14px; max-height:220px; overflow-y:auto; }
+        .search-result-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 20px;
+            margin-bottom: 8px;
+            transition: 0.2s;
+        }
+        .search-result-item:hover { background: rgba(11,197,197,0.2); transform: translateX(5px); }
+        .result-info { display: flex; align-items: center; gap: 12px; }
+        .result-avatar { width: 36px; height: 36px; background: linear-gradient(135deg,#0aa5a5,#0066aa); border-radius: 18px; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; font-weight: 600; }
+        .add-friend-btn { background: linear-gradient(135deg,#0bc5c5,#0088aa); border: none; padding: 6px 16px; cursor: pointer; transition: 0.2s; font-size: 12px; font-weight: 600; border-radius: 30px; color: white; }
+        .add-friend-btn:hover { transform: scale(0.95); box-shadow: 0 0 12px #0bc5c5; }
+        .nav-menu { flex:1; padding:16px 12px; display:flex; flex-direction:column; gap:8px; }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 18px;
+            cursor: pointer;
+            transition: 0.3s;
+            color: #aaccee;
+            border-radius: 28px;
+            background: rgba(255,255,255,0.02);
+        }
+        .nav-item svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.5; fill: none; transition: 0.2s; }
+        .nav-item:hover { background: rgba(11,197,197,0.15); color: #0bc5c5; transform: translateX(6px); }
+        .nav-item.active { background: linear-gradient(135deg,rgba(11,197,197,0.25),rgba(0,102,204,0.25)); color: #0bc5c5; border: 1px solid rgba(11,197,197,0.3); }
+        #contactsList { padding: 0 16px 20px; max-height: 300px; overflow-y: auto; }
+        .contact-item { cursor: pointer; margin-bottom: 8px; }
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(5,15,25,0.5);
+            backdrop-filter: blur(20px);
+            border-radius: 32px;
+            border: 1px solid rgba(0,200,210,0.25);
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .chat-header { padding: 18px 28px; background: rgba(0,0,0,0.3); border-bottom: 1px solid rgba(0,200,210,0.2); display: flex; align-items: center; justify-content: space-between; }
+        .chat-title { display: flex; align-items: center; gap: 14px; }
+        .chat-title svg { width: 32px; height: 32px; stroke: #0bc5c5; animation: floatIcon 3s infinite ease; }
+        @keyframes floatIcon { 0%,100%{ transform: translateY(0); } 50%{ transform: translateY(-4px); } }
+        .chat-title h2 { color: white; font-size: 20px; font-weight: 600; }
+        .call-buttons { display: flex; gap: 14px; }
+        .call-btn {
+            background: rgba(11,197,197,0.15);
+            border: 1px solid rgba(0,200,210,0.4);
+            padding: 10px 24px;
+            color: white;
+            cursor: pointer;
+            transition: 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-radius: 40px;
+            font-weight: 500;
+        }
+        .call-btn svg { width: 18px; height: 18px; stroke: white; fill: none; }
+        .call-btn:hover { background: linear-gradient(135deg,#0bc5c5,#0088aa); transform: scale(0.96); box-shadow: 0 0 20px rgba(11,197,197,0.5); color: black; border-color: transparent; }
+        .messages-container { flex:1; overflow-y: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 12px; }
+        .message-row { display: flex; width: 100%; animation: messageSlide 0.25s ease; }
+        @keyframes messageSlide { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .message-row.own { justify-content: flex-end; }
+        .message-bubble { max-width: 65%; padding: 12px 18px; font-size: 14px; line-height: 1.45; border-radius: 24px; }
+        .message-row.own .message-bubble { background: linear-gradient(135deg,#0bc5c5,#0099bb); color: #050b10; border-bottom-right-radius: 6px; }
+        .message-row.other .message-bubble { background: rgba(25,40,55,0.9); border: 1px solid rgba(0,200,210,0.3); color: #e0f0ff; border-bottom-left-radius: 6px; }
+        .file-attachment { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .download-btn { background: rgba(11,197,197,0.2); padding: 8px 18px; cursor: pointer; transition: 0.2s; color: white; font-size: 12px; font-weight: 500; border: 1px solid rgba(11,197,197,0.5); border-radius: 30px; }
+        .download-btn:hover { background: #0bc5c5; transform: scale(0.95); box-shadow: 0 0 14px #0bc5c5; color: black; }
+        .voice-player { display: flex; align-items: center; gap: 14px; }
+        .play-svg { width: 36px; height: 36px; background: linear-gradient(135deg,#0bc5c5,#0088aa); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; border-radius: 18px; }
+        .play-svg svg { width: 18px; height: 18px; stroke: black; fill: black; }
+        .play-svg:hover { transform: scale(1.1); box-shadow: 0 0 14px #0bc5c5; }
+        .input-panel { padding: 18px 24px 24px; background: rgba(0,0,0,0.3); border-top: 1px solid rgba(0,200,210,0.2); display: flex; align-items: center; gap: 14px; }
+        .text-input-wrapper { flex:1; display: flex; gap: 12px; align-items: center; background: rgba(10,20,30,0.8); border: 1px solid rgba(0,200,210,0.3); border-radius: 60px; transition: 0.3s; }
+        .text-input-wrapper:focus-within { border-color: #0bc5c5; box-shadow: 0 0 16px rgba(11,197,197,0.4); transform: translateY(-2px); }
+        #messageInput { flex:1; background: transparent; border: none; padding: 14px 20px; color: white; font-size: 14px; outline: none; border-radius: 60px; }
+        .send-icon { padding: 0 18px; cursor: pointer; transition: 0.3s; display: flex; align-items: center; }
+        .send-icon svg { width: 22px; height: 22px; stroke: #0bc5c5; stroke-width: 1.8; fill: none; }
+        .send-icon:hover { transform: translateX(5px) scale(1.1); }
+        .file-attach-icon { background: rgba(11,197,197,0.15); padding: 12px 16px; cursor: pointer; transition: 0.3s; display: flex; align-items: center; border-radius: 40px; border: 1px solid rgba(0,200,210,0.3); }
+        .file-attach-icon svg { width: 20px; height: 20px; stroke: white; fill: none; }
+        .file-attach-icon:hover { background: linear-gradient(135deg,#0bc5c5,#0088aa); transform: scale(0.95); box-shadow: 0 0 14px #0bc5c5; border-color: transparent; }
+        .circle-record { width: 58px; height: 58px; background: linear-gradient(135deg,#1a3a4a,#0a2a3a); border: 2px solid #0bc5c5; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; border-radius: 29px; }
+        .circle-record.recording { background: linear-gradient(135deg,#c44536,#a03020); animation: pulseGlow 1s infinite; }
+        @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(11,197,197,0.7);} 100% { box-shadow: 0 0 0 16px rgba(11,197,197,0);} }
+        .wave-animation { display: flex; gap: 4px; align-items: center; }
+        .wave-stroke { width: 4px; background: white; animation: waveHeight 0.7s infinite alternate; border-radius: 4px; }
+        .wave-stroke:nth-child(1) { height: 14px; }
+        .wave-stroke:nth-child(2) { height: 20px; animation-delay: 0.15s; }
+        .wave-stroke:nth-child(3) { height: 28px; animation-delay: 0.3s; }
+        .wave-stroke:nth-child(4) { height: 16px; animation-delay: 0.45s; }
+        @keyframes waveHeight { 0% { transform: scaleY(0.4); opacity: 0.5; } 100% { transform: scaleY(1); opacity: 1; } }
+        /* Call panel и overlay */
+        .call-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(15px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .call-modal {
+            background: rgba(10,25,40,0.95);
+            border: 2px solid #0bc5c5;
+            border-radius: 48px;
+            padding: 32px;
+            width: 340px;
+            text-align: center;
+            box-shadow: 0 0 50px rgba(11,197,197,0.4);
+        }
+        .call-modal h3 { color: white; font-size: 24px; margin-bottom: 16px; }
+        .call-modal p { color: #bbddff; margin-bottom: 24px; }
+        .call-modal-buttons { display: flex; gap: 20px; justify-content: center; }
+        .call-modal-buttons button {
+            padding: 12px 28px;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            border: none;
+        }
+        .accept-btn { background: #0bc5c5; color: black; }
+        .accept-btn:hover { transform: scale(0.96); box-shadow: 0 0 20px #0bc5c5; }
+        .reject-btn { background: rgba(255,70,70,0.3); color: white; border: 1px solid #ff6666; }
+        .reject-btn:hover { background: #ff4444; transform: scale(0.96); }
+        .call-panel {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 360px;
+            background: rgba(0,0,0,0.95);
+            backdrop-filter: blur(32px);
+            border-radius: 32px;
+            border: 2px solid #0bc5c5;
+            padding: 20px;
+            z-index: 1001;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        .call-panel video { width: 100%; border-radius: 20px; background: #000; margin-bottom: 12px; }
+        .call-controls { display: flex; gap: 12px; justify-content: center; margin-top: 16px; }
+        .call-controls button { background: rgba(11,197,197,0.2); border: none; padding: 10px 20px; border-radius: 40px; color: white; cursor: pointer; transition: 0.2s; }
+        .call-controls button:hover { background: #0bc5c5; color: black; transform: scale(0.96); }
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            background: rgba(0,0,0,0.95);
+            backdrop-filter: blur(20px);
+            padding: 14px 28px;
+            border-left: 4px solid #0bc5c5;
+            color: white;
+            z-index: 2000;
+            animation: toastPop 2.2s forwards;
+            border-radius: 60px;
+            font-weight: 500;
+        }
+        @keyframes toastPop { 0% { opacity: 0; transform: translateX(-70px);} 15% { opacity: 1; transform: translateX(0);} 85% { opacity: 1;} 100% { opacity: 0; transform: translateX(-70px);} }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #0bc5c5; border-radius: 10px; }
+        /* Модалки регистрации и входа */
+        .auth-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(24px);
+            z-index: 3000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .auth-card {
+            background: rgba(10,25,40,0.95);
+            border: 1px solid rgba(11,197,197,0.5);
+            width: 400px;
+            padding: 40px;
+            border-radius: 48px;
+            animation: floatReg 0.5s ease;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        @keyframes floatReg { from { opacity: 0; transform: scale(0.9) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .auth-card h2 { color: white; margin-bottom: 28px; font-weight: 600; font-size: 28px; text-align: center; }
+        .auth-input { width:100%; background:rgba(0,0,0,0.5); border:1px solid rgba(11,197,197,0.5); padding:14px 18px; color:white; margin-bottom:16px; outline:none; border-radius:60px; font-size:16px; }
+        .auth-input:focus { border-color:#0bc5c5; box-shadow:0 0 16px rgba(11,197,197,0.4); }
+        .auth-btn { width:100%; background:linear-gradient(135deg,#0bc5c5,#0088aa); border:none; padding:14px; color:black; font-weight:700; font-size:16px; cursor:pointer; transition:0.3s; border-radius:60px; margin-top:8px; }
+        .auth-btn:hover { filter:brightness(1.1); transform:scale(0.98); box-shadow:0 0 24px #0bc5c5; }
+        .auth-switch { color:#aaddff; text-align:center; margin-top:20px; font-size:14px; cursor:pointer; }
+        .auth-switch span { color:#0bc5c5; text-decoration:underline; }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+                "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
+                "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
+                "firebase/storage": "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js"
+            }
+        }
+    </script>
+    <script type="module">
+        // Firebase конфигурация (ваша)
+        const firebaseConfig = {
+            apiKey: "AIzaSyAvPTV3RVv3CDWNuC9bs27cuUVy_YZP8ug",
+            authDomain: "tmxmi-msg.firebaseapp.com",
+            projectId: "tmxmi-msg",
+            storageBucket: "tmxmi-msg.firebasestorage.app",
+            messagingSenderId: "81160522438",
+            appId: "1:81160522438:web:c2011fc51d3a3851c365c7",
+            measurementId: "G-4LW2S3Z0KT"
+        };
+        import { initializeApp } from "firebase/app";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, query, orderBy, getDocs, updateDoc, arrayUnion, deleteDoc, where, getDoc } from "firebase/firestore";
+        import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const storage = getStorage(app);
+        
+        let currentUser = null;      // { userId, username, avatarLetter }
+        let contacts = [];
+        let activeChat = null;
+        let appRoot = document.getElementById('appRoot');
+        
+        // WebRTC переменные
+        let localStream = null;
+        let peerConnection = null;
+        let currentCallPanel = null;
+        let currentCallWith = null;
+        const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+        
+        function showToast(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerText = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2100);
+        }
+        function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
+        
+        // ---------- АУТЕНТИФИКАЦИЯ (имя пользователя + пароль) ----------
+        async function registerUser(username, password, avatarLetter) {
+            // Проверяем, не занят ли username
+            const q = query(collection(db, "users"), where("username", "==", username));
+            const snap = await getDocs(q);
+            if (!snap.empty) throw new Error("Имя пользователя уже занято");
+            // Создаём анонимную учётку Firebase
+            const userCred = await signInAnonymously(auth);
+            const firebaseUid = userCred.user.uid;
+            // Сохраняем данные пользователя в Firestore
+            await setDoc(doc(db, "users", firebaseUid), {
+                userId: firebaseUid,
+                username: username,
+                password: password, // в реальном проекте хешировать!
+                avatarLetter: avatarLetter || username[0].toUpperCase(),
+                friends: []
+            });
+            currentUser = { userId: firebaseUid, username, avatarLetter: avatarLetter || username[0].toUpperCase() };
+            localStorage.setItem('tmxmi_user', JSON.stringify({ userId: firebaseUid, username, avatarLetter: currentUser.avatarLetter }));
+            return currentUser;
+        }
+        
+        async function loginUser(username, password) {
+            const q = query(collection(db, "users"), where("username", "==", username), where("password", "==", password));
+            const snap = await getDocs(q);
+            if (snap.empty) throw new Error("Неверное имя пользователя или пароль");
+            const userData = snap.docs[0].data();
+            const firebaseUid = userData.userId;
+            // Входим анонимно с этим UID (нужно сохранить сессию)
+            await signInAnonymously(auth);
+            // Принудительно устанавливаем currentUser
+            currentUser = { userId: firebaseUid, username: userData.username, avatarLetter: userData.avatarLetter };
+            localStorage.setItem('tmxmi_user', JSON.stringify({ userId: firebaseUid, username: userData.username, avatarLetter: userData.avatarLetter }));
+            return currentUser;
+        }
+        
+        async function loadUserFromStorage() {
+            const saved = localStorage.getItem('tmxmi_user');
+            if (saved) {
+                const data = JSON.parse(saved);
+                currentUser = data;
+                // Проверяем существование пользователя в Firestore
+                const userDoc = await getDoc(doc(db, "users", currentUser.userId));
+                if (userDoc.exists()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        function showAuth() {
+            let isLogin = true;
+            const modal = document.createElement('div');
+            modal.className = 'auth-modal';
+            const render = () => {
+                modal.innerHTML = `
+                    <div class="auth-card">
+                        <h2>${isLogin ? 'Вход' : 'Регистрация'}</h2>
+                        <input type="text" class="auth-input" id="authUsername" placeholder="Имя пользователя">
+                        <input type="password" class="auth-input" id="authPassword" placeholder="Пароль">
+                        ${!isLogin ? '<input type="text" class="auth-input" id="authAvatar" maxlength="1" placeholder="Буква аватара (необязательно)">' : ''}
+                        <button class="auth-btn" id="authSubmitBtn">${isLogin ? 'Войти' : 'Зарегистрироваться'}</button>
+                        <div class="auth-switch">${isLogin ? 'Нет аккаунта?' : 'Уже есть аккаунт?'} <span id="switchAuthMode">${isLogin ? 'Зарегистрироваться' : 'Войти'}</span></div>
+                    </div>
+                `;
+                document.getElementById('authSubmitBtn').onclick = async () => {
+                    const username = document.getElementById('authUsername').value.trim();
+                    const password = document.getElementById('authPassword').value.trim();
+                    if (!username || !password) { alert('Заполните все поля'); return; }
+                    try {
+                        if (isLogin) {
+                            await loginUser(username, password);
+                        } else {
+                            const avatar = document.getElementById('authAvatar')?.value.trim().toUpperCase() || '';
+                            await registerUser(username, password, avatar);
+                        }
+                        modal.remove();
+                        await loadContacts();
+                        renderMainApp();
+                        listenForCalls();
+                    } catch(e) { alert(e.message); }
+                };
+                document.getElementById('switchAuthMode').onclick = () => { isLogin = !isLogin; render(); };
+            };
+            render();
+            document.body.appendChild(modal);
+        }
+        
+        // ---------- FIRESTORE ОПЕРАЦИИ ----------
+        async function fetchAllUsers() {
+            const snapshot = await getDocs(collection(db, "users"));
+            const users = [];
+            snapshot.forEach(doc => { if (doc.id !== currentUser.userId) users.push(doc.data()); });
+            return users;
+        }
+        
+        async function addFriend(friendId, friendName, friendAvatar) {
+            const userRef = doc(db, "users", currentUser.userId);
+            await updateDoc(userRef, { friends: arrayUnion({ id: friendId, name: friendName, avatar: friendAvatar }) });
+            const friendRef = doc(db, "users", friendId);
+            await updateDoc(friendRef, { friends: arrayUnion({ id: currentUser.userId, name: currentUser.username, avatar: currentUser.avatarLetter }) });
+            showToast(`${friendName} добавлен в друзья`);
+            await loadContacts();
+            renderSidebarFriends();
+        }
+        
+        async function loadContacts() {
+            const userDoc = await getDoc(doc(db, "users", currentUser.userId));
+            contacts = userDoc.data()?.friends || [];
+        }
+        
+        async function sendMessage(contactId, type, data) {
+            if (!contactId) { showToast('Выберите чат'); return; }
+            const chatId = [currentUser.userId, contactId].sort().join('_');
+            const message = { id: Date.now() + '_' + Math.random(), senderId: currentUser.userId, senderName: currentUser.username, senderAvatar: currentUser.avatarLetter, type, timestamp: Date.now(), ...data };
+            await addDoc(collection(db, "chats", chatId, "messages"), message);
+        }
+        
+        let unsubscribeMessages = null;
+        function subscribeToMessages(contactId) {
+            if (unsubscribeMessages) unsubscribeMessages();
+            if (!contactId) return;
+            const chatId = [currentUser.userId, contactId].sort().join('_');
+            const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp", "asc"));
+            unsubscribeMessages = onSnapshot(q, (snapshot) => {
+                const messages = [];
+                snapshot.forEach(doc => messages.push(doc.data()));
+                renderMessages(messages);
+            });
+        }
+        
+        function renderMessages(messages) {
+            const container = document.getElementById('messagesList');
+            if (!container) return;
+            container.innerHTML = '';
+            messages.forEach(msg => {
+                const row = document.createElement('div');
+                row.className = `message-row ${msg.senderId === currentUser.userId ? 'own' : 'other'}`;
+                const bubble = document.createElement('div');
+                bubble.className = 'message-bubble';
+                if (msg.type === 'text') bubble.innerText = msg.content;
+                else if (msg.type === 'voice') {
+                    bubble.innerHTML = `<div class="voice-player"><div class="play-svg" data-url="${msg.audioUrl}"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="black"/></svg></div><span>Голосовое (${msg.duration}с)</span><audio id="audio-${msg.id}" src="${msg.audioUrl}" style="display:none;"></audio></div>`;
+                } else if (msg.type === 'file') {
+                    bubble.innerHTML = `<div class="file-attachment"><span>Файл: ${escapeHtml(msg.fileName)} (${(msg.fileSize/1048576).toFixed(2)} MB)</span><button class="download-btn" data-url="${msg.fileDataUrl}" data-name="${escapeHtml(msg.fileName)}">Скачать</button></div>`;
+                }
+                row.appendChild(bubble);
+                container.appendChild(row);
+            });
+            // Обработчики
+            document.querySelectorAll('.play-svg').forEach(btn => {
+                btn.onclick = () => {
+                    const url = btn.getAttribute('data-url');
+                    const audioId = 'audio_' + Date.now();
+                    let audio = document.getElementById(audioId);
+                    if (!audio) {
+                        audio = document.createElement('audio');
+                        audio.id = audioId;
+                        audio.src = url;
+                        document.body.appendChild(audio);
+                    }
+                    if (audio.paused) {
+                        audio.play();
+                        btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" fill="black"/><rect x="14" y="4" width="4" height="16" fill="black"/></svg>';
+                    } else {
+                        audio.pause();
+                        btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="black"/></svg>';
+                    }
+                    audio.onended = () => btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="black"/></svg>';
+                };
+            });
+            document.querySelectorAll('.download-btn').forEach(btn => {
+                btn.onclick = () => {
+                    const url = btn.getAttribute('data-url');
+                    const name = btn.getAttribute('data-name');
+                    if (url) {
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = name;
+                        a.click();
+                        showToast(`Скачивание: ${name}`);
+                    }
+                };
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function renderSidebarFriends() {
+            const container = document.getElementById('contactsList');
+            if (!container) return;
+            container.innerHTML = contacts.map(c => `<div class="search-result-item contact-item" data-id="${c.id}" style="cursor:pointer;"><div class="result-info"><div class="result-avatar">${c.avatar}</div><span style="color:white;">${escapeHtml(c.name)}</span></div></div>`).join('');
+            document.querySelectorAll('.contact-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    activeChat = el.getAttribute('data-id');
+                    const contact = contacts.find(c => c.id === activeChat);
+                    document.getElementById('chatTitle').innerText = contact ? contact.name : 'Чат';
+                    subscribeToMessages(activeChat);
+                });
+            });
+            const friendsSpan = document.getElementById('friendsCount');
+            if (friendsSpan) friendsSpan.innerText = contacts.length;
+        }
+        
+        async function searchPeople() {
+            const queryText = document.getElementById('searchPeopleInput').value.toLowerCase();
+            const allUsers = await fetchAllUsers();
+            const results = allUsers.filter(u => u.username.toLowerCase().includes(queryText) && !contacts.some(c => c.id === u.userId));
+            const container = document.getElementById('searchResults');
+            if (!results.length) { container.innerHTML = '<div style="color:#888; padding:12px;">Не найдено</div>'; return; }
+            container.innerHTML = results.map(u => `<div class="search-result-item"><div class="result-info"><div class="result-avatar">${u.avatarLetter}</div><span style="color:white;">${escapeHtml(u.username)}</span></div><button class="add-friend-btn" data-id="${u.userId}" data-name="${escapeHtml(u.username)}" data-avatar="${u.avatarLetter}">Добавить</button></div>`).join('');
+            document.querySelectorAll('.add-friend-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    await addFriend(btn.dataset.id, btn.dataset.name, btn.dataset.avatar);
+                    document.getElementById('searchResults').innerHTML = '';
+                    document.getElementById('searchPeopleInput').value = '';
+                };
+            });
+        }
+        
+        // ---------- ГОЛОСОВЫЕ СООБЩЕНИЯ ----------
+        let mediaRecorder = null, audioChunks = [], isRecording = false, recordStart = null, recordInterval = null, recordingStream = null;
+        async function startVoiceRecording() {
+            if (isRecording) return;
+            if (!activeChat) { showToast('Выберите чат'); return; }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                recordingStream = stream;
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.onstop = async () => {
+                    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const fileName = `voice_${Date.now()}_${Math.random().toString(36).substr(2, 6)}.webm`;
+                    const storageRef = ref(storage, `voice/${currentUser.userId}/${fileName}`);
+                    await uploadBytes(storageRef, blob);
+                    const audioUrl = await getDownloadURL(storageRef);
+                    const duration = Math.floor((Date.now() - recordStart) / 1000);
+                    if (duration >= 1) await sendMessage(activeChat, 'voice', { audioUrl, duration });
+                    else showToast('Слишком коротко');
+                    if (recordingStream) recordingStream.getTracks().forEach(t => t.stop());
+                };
+                mediaRecorder.start();
+                isRecording = true;
+                recordStart = Date.now();
+                const recordBtn = document.getElementById('recordCircleBtn');
+                if (recordBtn) recordBtn.classList.add('recording');
+                const waveGroup = document.getElementById('waveGroup');
+                const micIcon = document.getElementById('micNormalIcon');
+                if (waveGroup) waveGroup.style.display = 'flex';
+                if (micIcon) micIcon.style.display = 'none';
+                recordInterval = setInterval(() => {
+                    if (isRecording && recordStart) {
+                        const sec = Math.floor((Date.now() - recordStart) / 1000);
+                        const timerSpan = document.getElementById('recordTimer');
+                        if (timerSpan) timerSpan.innerText = `${sec}с`;
+                    }
+                }, 200);
+            } catch(e) { showToast('Микрофон недоступен'); }
+        }
+        function stopVoiceRecording() {
+            if (!isRecording || !mediaRecorder) return;
+            mediaRecorder.stop();
+            isRecording = false;
+            clearInterval(recordInterval);
+            const recordBtn = document.getElementById('recordCircleBtn');
+            if (recordBtn) recordBtn.classList.remove('recording');
+            const waveGroup = document.getElementById('waveGroup');
+            const micIcon = document.getElementById('micNormalIcon');
+            if (waveGroup) waveGroup.style.display = 'none';
+            if (micIcon) micIcon.style.display = 'block';
+            const timerSpan = document.getElementById('recordTimer');
+            if (timerSpan) timerSpan.innerText = '';
+            if (recordingStream) recordingStream.getTracks().forEach(t => t.stop());
+        }
+        
+        // ---------- REAL WEBRTC CALLS С ОВЕРЛЕЕМ ----------
+        let incomingCallOverlay = null;
+        
+        async function startCall(isVideo) {
+            if (!activeChat) { showToast('Выберите собеседника'); return; }
+            const target = contacts.find(c => c.id === activeChat);
+            if (!target) { showToast('Собеседник не найден'); return; }
+            if (currentCallPanel) { showToast('Уже есть активный звонок'); return; }
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo });
+                peerConnection = new RTCPeerConnection(configuration);
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                peerConnection.ontrack = (event) => {
+                    if (!currentCallPanel) createCallPanel(isVideo);
+                    const videoEl = currentCallPanel.querySelector('#remoteVideo');
+                    if (videoEl && event.streams[0]) videoEl.srcObject = event.streams[0];
+                };
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        sendCallSignal(target.id, { type: 'candidate', candidate: event.candidate });
+                    }
+                };
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                sendCallSignal(target.id, { type: 'offer', sdp: offer.sdp, video: isVideo, from: currentUser.userId, fromName: currentUser.username });
+                currentCallWith = target.id;
+                createCallPanel(isVideo);
+                showToast(`Звоним ${target.name}...`);
+            } catch (err) {
+                showToast('Ошибка доступа к медиа: ' + err.message);
+            }
+        }
+        
+        function sendCallSignal(toUserId, data) {
+            const callId = `${currentUser.userId}_${toUserId}_${Date.now()}`;
+            const callRef = doc(collection(db, "calls"), callId);
+            setDoc(callRef, { to: toUserId, from: currentUser.userId, data, timestamp: Date.now() });
+            setTimeout(() => deleteDoc(callRef).catch(()=>{}), 30000);
+        }
+        
+        function listenForCalls() {
+            const q = query(collection(db, "calls"), where("to", "==", currentUser.userId));
+            onSnapshot(q, async (snapshot) => {
+                for (const docSnap of snapshot.docs) {
+                    const callData = docSnap.data();
+                    const signal = callData.data;
+                    const fromId = callData.from;
+                    if (signal.type === 'offer') {
+                        // Показываем затемнённое окно с выбором
+                        if (incomingCallOverlay) incomingCallOverlay.remove();
+                        const fromUser = (await getDoc(doc(db, "users", fromId))).data();
+                        const overlay = document.createElement('div');
+                        overlay.className = 'call-overlay';
+                        overlay.innerHTML = `
+                            <div class="call-modal">
+                                <h3>Входящий звонок</h3>
+                                <p>${fromUser ? escapeHtml(fromUser.username) : 'Пользователь'}</p>
+                                <div class="call-modal-buttons">
+                                    <button class="accept-btn">Принять</button>
+                                    <button class="reject-btn">Отклонить</button>
+                                </div>
+                            </div>
+                        `;
+                        document.body.appendChild(overlay);
+                        incomingCallOverlay = overlay;
+                        const acceptBtn = overlay.querySelector('.accept-btn');
+                        const rejectBtn = overlay.querySelector('.reject-btn');
+                        acceptBtn.onclick = async () => {
+                            overlay.remove();
+                            incomingCallOverlay = null;
+                            try {
+                                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: signal.video });
+                                peerConnection = new RTCPeerConnection(configuration);
+                                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                                peerConnection.ontrack = (event) => {
+                                    if (!currentCallPanel) createCallPanel(signal.video);
+                                    const videoEl = currentCallPanel.querySelector('#remoteVideo');
+                                    if (videoEl && event.streams[0]) videoEl.srcObject = event.streams[0];
+                                };
+                                peerConnection.onicecandidate = (event) => {
+                                    if (event.candidate) sendCallSignal(fromId, { type: 'candidate', candidate: event.candidate });
+                                };
+                                await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }));
+                                const answer = await peerConnection.createAnswer();
+                                await peerConnection.setLocalDescription(answer);
+                                sendCallSignal(fromId, { type: 'answer', sdp: answer.sdp });
+                                currentCallWith = fromId;
+                                createCallPanel(signal.video);
+                                showToast(`Соединение установлено`);
+                            } catch (err) {
+                                showToast('Ошибка: ' + err.message);
+                            }
+                            await deleteDoc(docSnap.ref);
+                        };
+                        rejectBtn.onclick = async () => {
+                            overlay.remove();
+                            incomingCallOverlay = null;
+                            sendCallSignal(fromId, { type: 'reject' });
+                            await deleteDoc(docSnap.ref);
+                        };
+                    } else if (signal.type === 'answer' && peerConnection && currentCallWith === fromId) {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }));
+                        await deleteDoc(docSnap.ref);
+                    } else if (signal.type === 'candidate' && peerConnection) {
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                        await deleteDoc(docSnap.ref);
+                    } else if (signal.type === 'reject') {
+                        if (incomingCallOverlay) incomingCallOverlay.remove();
+                        showToast('Звонок отклонён');
+                        endCall();
+                        await deleteDoc(docSnap.ref);
+                    }
+                }
+            });
+        }
+        
+        function createCallPanel(isVideo) {
+            if (currentCallPanel) currentCallPanel.remove();
+            currentCallPanel = document.createElement('div');
+            currentCallPanel.className = 'call-panel';
+            currentCallPanel.innerHTML = `
+                <video id="remoteVideo" autoplay playsinline></video>
+                ${isVideo ? '<video id="localVideo" autoplay playsinline muted style="width:100%; border-radius:20px; margin-top:8px;"></video>' : ''}
+                <div class="call-controls">
+                    <button id="endCallBtn">Завершить</button>
+                    <button id="muteAudioBtn">Выкл. звук</button>
+                    ${isVideo ? '<button id="toggleVideoBtn">Выкл. видео</button>' : ''}
+                </div>
+            `;
+            document.body.appendChild(currentCallPanel);
+            if (isVideo && localStream) {
+                const localVideo = currentCallPanel.querySelector('#localVideo');
+                if (localVideo) localVideo.srcObject = localStream;
+            }
+            document.getElementById('endCallBtn').onclick = () => endCall();
+            document.getElementById('muteAudioBtn').onclick = () => {
+                if (localStream) {
+                    const audioTrack = localStream.getAudioTracks()[0];
+                    audioTrack.enabled = !audioTrack.enabled;
+                    document.getElementById('muteAudioBtn').innerText = audioTrack.enabled ? 'Выкл. звук' : 'Вкл. звук';
+                }
+            };
+            if (isVideo) {
+                document.getElementById('toggleVideoBtn').onclick = () => {
+                    if (localStream) {
+                        const videoTrack = localStream.getVideoTracks()[0];
+                        videoTrack.enabled = !videoTrack.enabled;
+                        document.getElementById('toggleVideoBtn').innerText = videoTrack.enabled ? 'Выкл. видео' : 'Вкл. видео';
+                    }
+                };
+            }
+        }
+        
+        function endCall() {
+            if (peerConnection) peerConnection.close();
+            if (localStream) localStream.getTracks().forEach(t => t.stop());
+            if (currentCallPanel) currentCallPanel.remove();
+            currentCallPanel = null;
+            peerConnection = null;
+            localStream = null;
+            currentCallWith = null;
+            showToast('Звонок завершён');
+        }
+        
+        // ---------- ОСНОВНОЙ ИНТЕРФЕЙС ----------
+        function renderMainApp() {
+            appRoot.innerHTML = `<div class="app"><div class="sidebar"><div class="sidebar-header"><div class="user-card" id="profileBtn"><div class="avatar-icon"><svg viewBox="0 0 24 24" stroke="white" fill="none"><text x="12" y="17" font-size="12" text-anchor="middle" fill="white">${currentUser.avatarLetter}</text></svg></div><div class="user-text"><h4>${escapeHtml(currentUser.username)}</h4><p>онлайн</p></div></div></div><div class="search-section"><div class="search-wrapper"><input type="text" class="search-input" id="searchPeopleInput" placeholder="Поиск людей..."><div class="search-btn" id="searchBtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke="currentColor" fill="none"/><line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor"/></svg></div></div><div class="search-results" id="searchResults"></div></div><div class="nav-menu"><div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" fill="none"/></svg><span>Чаты</span></div><div class="nav-item"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" fill="none"/><circle cx="9" cy="7" r="4" stroke="currentColor" fill="none"/><path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" fill="none"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" fill="none"/></svg><span>Друзья <span id="friendsCount">${contacts.length}</span></span></div></div><div id="contactsList"></div></div><div class="chat-area"><div class="chat-header"><div class="chat-title"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" fill="none"/></svg><h2 id="chatTitle">Выберите чат</h2></div><div class="call-buttons"><div class="call-btn" id="audioCallBtn"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor" fill="none"/><line x1="12" y1="18" x2="12" y2="18" stroke="currentColor" stroke-width="2"/></svg>Аудио</div><div class="call-btn" id="videoCallBtn"><svg viewBox="0 0 24 24"><path d="M23 7l-5 5 5 5V7z" stroke="currentColor" fill="none"/><rect x="1" y="5" width="15" height="14" rx="2" stroke="currentColor" fill="none"/></svg>Видео</div></div></div><div class="messages-container" id="messagesList"></div><div class="input-panel"><div class="file-attach-icon" id="fileAttachBtn"><svg viewBox="0 0 24 24"><path d="M13.5 3H12a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a1 1 0 0 0-1-1 1 1 0 0 0-1 1v10" stroke="currentColor" fill="none"/></svg></div><input type="file" id="hiddenFileInput" style="display:none;"><div class="text-input-wrapper"><input type="text" id="messageInput" placeholder="Написать сообщение..."><div class="send-icon" id="sendMsgBtn"><svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13" stroke="currentColor"/><polygon points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" fill="none"/></svg></div></div><div class="circle-record" id="recordCircleBtn"><div class="wave-animation" id="waveGroup" style="display: none;"><div class="wave-stroke"></div><div class="wave-stroke"></div><div class="wave-stroke"></div><div class="wave-stroke"></div></div><div id="micNormalIcon"><svg width="24" height="24" viewBox="0 0 24 24" stroke="white" fill="none"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div></div><span id="recordTimer" style="color:#88ccff; font-size:13px;"></span></div></div></div>`;
+            renderSidebarFriends();
+            attachEvents();
+            if (activeChat) subscribeToMessages(activeChat);
+        }
+        
+        function attachEvents() {
+            document.getElementById('sendMsgBtn')?.addEventListener('click', async () => {
+                const input = document.getElementById('messageInput');
+                if (input.value.trim() && activeChat) { await sendMessage(activeChat, 'text', { content: input.value.trim() }); input.value = ''; }
+                else if (!activeChat) showToast('Выберите чат');
+            });
+            document.getElementById('messageInput')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('sendMsgBtn').click(); });
+            document.getElementById('fileAttachBtn')?.addEventListener('click', () => document.getElementById('hiddenFileInput').click());
+            document.getElementById('hiddenFileInput')?.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (file.size > 5*1024*1024*1024) { showToast('Файл превышает 5 ГБ'); return; }
+                if (!activeChat) { showToast('Выберите чат'); return; }
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                    const fileName = `file_${Date.now()}_${file.name}`;
+                    const storageRef = ref(storage, `files/${currentUser.userId}/${fileName}`);
+                    const blob = new Blob([ev.target.result], { type: file.type });
+                    await uploadBytes(storageRef, blob);
+                    const fileUrl = await getDownloadURL(storageRef);
+                    await sendMessage(activeChat, 'file', { fileName: file.name, fileSize: file.size, fileDataUrl: fileUrl });
+                };
+                reader.readAsArrayBuffer(file);
+                document.getElementById('hiddenFileInput').value = '';
+            });
+            document.getElementById('audioCallBtn')?.addEventListener('click', () => startCall(false));
+            document.getElementById('videoCallBtn')?.addEventListener('click', () => startCall(true));
+            document.getElementById('profileBtn')?.addEventListener('click', () => showToast(`Профиль: ${currentUser.username}`));
+            document.getElementById('searchBtn')?.addEventListener('click', searchPeople);
+            document.getElementById('searchPeopleInput')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') searchPeople(); });
+            document.getElementById('recordCircleBtn')?.addEventListener('click', () => { if (isRecording) stopVoiceRecording(); else startVoiceRecording(); });
+        }
+        
+        // Запуск
+        (async () => {
+            const hasUser = await loadUserFromStorage();
+            if (hasUser) {
+                await loadContacts();
+                renderMainApp();
+                listenForCalls();
+            } else {
+                showAuth();
+            }
+        })();
+    </script>
+</head>
+<body>
+<div class="fluid-bg"></div>
+<div class="particles"></div>
+<div id="appRoot"></div>
+</body>
+</html>
